@@ -4,142 +4,136 @@
 
 # Pipeline Stages
 
-## Typical Pipeline Structure
+## Standard Pipeline Shape
 
-```
-+------------------------------------------------------------------+
-|                        CI PIPELINE                                |
-+----------+----------+----------+----------+----------+-----------+
-|  Build   |   Lint   |   Test   |   SAST   | Secrets  |  Package  |
-+----------+----------+----------+----------+----------+-----------+
-                                                              |
-                                                              v
-+------------------------------------------------------------------+
-|                        CD PIPELINE                                |
-+------------------+------------------+----------------------------+
-|   Deploy Dev     |  Deploy Stage    |     Deploy Prod            |
-|                  |                  |   (manual approval)        |
-+------------------+------------------+----------------------------+
+```text
+CI:
+  checkout -> build -> lint -> unit test -> basic security
+
+CD:
+  build image -> push ghcr -> deploy dev/stage/prod
 ```
 
----
-
-## CI Jobs Explained
-
-| Job | Purpose | Tools |
-|-----|---------|-------|
-| **Build** | Compile code, resolve deps | npm, maven, gradle |
-| **Lint** | Code style & quality | ESLint, Prettier, Checkstyle |
-| **Unit Test** | Test functions in isolation | Jest, JUnit, pytest |
-| **SAST** | Static security analysis | CodeQL, SonarQube |
-| **Secret Scan** | Find leaked credentials | Gitleaks, GitHub secret scanning |
-| **Package** | Create deployable artifact | Docker build |
+Production deploy requires manual approval.
 
 ---
 
-## CD Jobs Explained
+## Branch-Based Flow (Aligned with Git Workflow Deck)
 
-| Job | Purpose | Trigger |
-|-----|---------|---------|
-| **Deploy Dev** | Developer testing | Automatic on `dev` branch |
-| **Deploy Stage** | QA validation | Automatic on `stage` branch |
-| **Deploy Prod** | Live users | Manual approval on `main` |
-
----
-
-## Pipeline Per Branch Type
-
-```yaml
+```text
 feature/* -> PR to dev:
-  Build -> Lint -> Unit Tests -> Security Scan
+  fast CI checks only
 
-dev branch:
-  Build -> Test -> Package -> Deploy to Dev
+dev push:
+  full CI + image publish + deploy dev
 
-stage branch:
-  Build -> Test -> Package -> Deploy to Stage
+stage push:
+  full CI + image promote + deploy stage
 
-main branch:
-  Build -> Test -> Package -> Manual Approval -> Deploy to Prod
+main push:
+  full CI + prod approval + deploy prod
 ```
 
 ---
 
-## GitHub Actions: Jobs as Stages
+## Stage Objectives
+
+| Stage | Objective | Fail Condition |
+|------|-----------|----------------|
+| Build | Compile/package app | Compile error, dependency issues |
+| Lint | Keep code standards | Style or static check failures |
+| Unit Tests | Validate behavior quickly | Test failure |
+| Security | Catch obvious risks early | Secret or high severity finding |
+| Package | Build immutable image | Docker build/push failure |
+| Deploy | Release validated image | Health check or rollout failure |
+
+---
+
+## Example Stage Graph
+
+```text
+         +-----------+
+         |   Build   |
+         +-----------+
+           /       \
+          v         v
+     +-------+   +-------+
+     | Lint  |   | Tests |
+     +-------+   +-------+
+          \       /
+           v     v
+       +-----------+
+       | Security  |
+       +-----------+
+             |
+             v
+       +-----------+
+       | Package   |
+       +-----------+
+             |
+             v
+       +-----------+
+       | Deploy    |
+       +-----------+
+```
+
+---
+
+## Minimal YAML Structure
 
 ```yaml
 jobs:
-  # CI Stage
-  build:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm ci
-      - run: npm run build
+      - run: echo "build + lint + test + scan"
 
-  lint:
+  package:
+    needs: ci
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: npm run lint
+      - run: echo "docker build/push"
 
-  test:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm test
-
-  # CD Stage
   deploy:
-    needs: [build, lint, test]
+    needs: package
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Deploying..."
+      - run: echo "deploy by branch"
 ```
 
 ---
 
-## Parallel vs Sequential
+## Fast Feedback vs Full Validation
 
-**Parallel (faster):**
-```yaml
-jobs:
-  build:   # Starts immediately
-  lint:    # Starts immediately (parallel with build)
-  test:    # Starts immediately (parallel)
-```
+Recommended split:
+- PR pipeline: fast checks, no deploy
+- Branch pipeline (`dev`/`stage`/`main`): full validation and deploy path
 
-**Sequential (dependencies):**
-```yaml
-jobs:
-  build:
-  test:
-    needs: build    # Waits for build
-  deploy:
-    needs: test     # Waits for test
-```
+Benefits:
+- Faster developer feedback
+- Reduced CI cost on feature branches
+- Stable promotion on permanent branches
 
 ---
 
-## Our Recommended Pipeline
+## Failure Handling Rules
 
-```
-+-------+    +------+    +------+    +----------+
-| Build | -> | Lint | -> | Test | -> | Security |
-+-------+    +------+    +------+    +----------+
-                                          |
-                                          v
-                              +---------------------+
-                              | Package (Docker)    |
-                              +---------------------+
-                                          |
-        +---------------------------------+
-        |               |                 |
-        v               v                 v
-   [Deploy Dev]   [Deploy Stage]   [Deploy Prod]
-    (auto)          (auto)        (manual approval)
-```
+If a stage fails:
+1. Stop pipeline at first failing gate
+2. Fix in the same branch context
+3. Re-run only after root cause is clear
+4. No manual bypass on protected branches
+
+---
+
+## Definition of Done for CI/CD
+
+A change is "delivery ready" only if:
+- Required CI gates pass
+- Docker image is published and traceable
+- Deploy target is known (`dev`, `stage`, or `prod`)
+- Rollback target is known (previous tag/image)
 
 ---
 

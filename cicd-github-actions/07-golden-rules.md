@@ -1,144 +1,76 @@
-[Previous: Workflow Examples](./06-workflow-examples.md) | [Index](./README.md)
+[Previous: Workflow Examples](./06-workflow-examples.md) | [Index](./README.md) | [Next: IDP Vision and Golden Path](./08-idp-vision.md)
 
 ---
 
-# CI/CD Golden Rules
+# Golden Rules
 
-## Pipeline Rules
+## Quality Gate Rules
 
-1. **Pipeline must pass before merge** - no exceptions
-2. **Same image for all environments** - build once, deploy many
-3. **Never overwrite image tags** - immutable versions
-4. **Run security scans in CI** - catch vulnerabilities early
+1. CI must pass before merge on protected branches.
+2. No direct pushes to `dev`, `stage`, `main`.
+3. PR reviews are mandatory for protected branches.
+4. Security and secret checks are not optional.
+
+---
+
+## Artifact Rules
+
+5. Build once, deploy many.
+6. Use immutable image tags (SHA and/or semver).
+7. Never deploy `latest` to production.
+8. Every deployment must be traceable to a commit.
 
 ---
 
 ## Deployment Rules
 
-5. **Manual approval for production** - always
-6. **Environment parity** - same image, different config
-7. **Never hardcode secrets** - use GitHub Secrets
-8. **Keep rollback path clear** - know your previous version
+9. `dev` and `stage` deploy automatically after successful pipeline.
+10. `prod` deployment always requires explicit approval.
+11. Rollback target must be known before production release.
+12. Deploy and rollback steps must be documented in repo.
 
 ---
 
-## Branch Rules
+## Secrets and Access Rules
 
-9. **Protect `main`, `stage`, `dev`** - require PR reviews
-10. **CI must pass before merge** - use branch protection
-11. **No direct commits to protected branches** - always PR
-12. **Clean up feature branches** - delete after merge
-
----
-
-## Quick Reference: Deployment Checklist
-
-```
-[ ] Tests passing
-[ ] Code reviewed and approved
-[ ] Environment secrets configured
-[ ] Previous version tagged/known
-[ ] Monitoring dashboard ready
-[ ] On-call team notified (for prod)
-```
+13. No secrets in code, logs, or Docker images.
+14. Use environment secrets for environment-specific credentials.
+15. Keep workflow permissions minimal.
+16. Rotate leaked credentials immediately.
 
 ---
 
-## Quick Reference: Rollback
+## Team Operating Rules
 
-If something goes wrong in production:
+17. Shared workflows are versioned and owned.
+18. Every service follows the same minimum CI/CD contract.
+19. Incidents are handled with runbooks, not improvisation.
+20. Post-incident improvements are tracked and implemented.
 
-```
-1. Redeploy previous image tag     (fastest)
-2. Revert Git commit + rebuild     (cleanest)
-3. Fix forward with hotfix         (if rollback risky)
+---
+
+## Quick Release Checklist
+
+```text
+[ ] PR approved and merged
+[ ] CI/CD pipeline green
+[ ] Image tag recorded (SHA/semver)
+[ ] Stage validation completed
+[ ] Production approver available
+[ ] Rollback target identified
 ```
 
-Always know your last known good version!
+---
+
+## Common Anti-Patterns
+
+| Anti-Pattern | Risk | Better Approach |
+|-------------|------|-----------------|
+| Giant workflow file for everything | Hard maintenance | Split by concern (checks/build/deploy) |
+| Copy-pasted workflows across repos | Drift and inconsistency | Reusable workflows |
+| Manual prod commands from laptops | No auditability | GitHub Environment + workflow approvals |
+| Rebuilding image per environment | Inconsistent releases | Build once, promote same image |
 
 ---
 
-## Common Mistakes to Avoid
-
-| Mistake | Why It's Bad | Do Instead |
-|---------|--------------|------------|
-| Using `latest` tag | Don't know what's deployed | Use commit SHA or semver |
-| Hardcoding URLs | Breaks in other envs | Use environment variables |
-| Skipping tests | Bugs in production | Always run tests |
-| No approval for prod | Accidental deployments | Require manual approval |
-| No secrets masking | Leaked credentials | Use GitHub Secrets |
-
----
-
-## GitHub Actions Best Practices
-
-1. **Use specific action versions** - `@v4` not `@main`
-2. **Cache dependencies** - faster builds
-3. **Use environments** - for approvals and secrets
-4. **Limit permissions** - principle of least privilege
-5. **Keep workflows DRY** - use reusable workflows
-
----
-
-## Permissions Best Practice
-
-```yaml
-# Limit permissions to what's needed
-permissions:
-  contents: read
-  packages: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-```
-
-Don't give more permissions than necessary.
-
----
-
-## Summary
-
-| Principle | Rule |
-|-----------|------|
-| **Build** | Once, deploy many |
-| **Test** | Always, before merge |
-| **Security** | Scan in CI |
-| **Deploy** | Protected branches only |
-| **Production** | Manual approval required |
-| **Secrets** | Never in code |
-| **Rollback** | Always have a plan |
-
----
-
-## Questions?
-
----
-
-## Thank You!
-
-**Key Takeaways:**
-- Build once, deploy many
-- Pipeline must pass before merge
-- Manual approval for production
-- Never hardcode secrets
-- Always know your rollback path
-
----
-
-## Next Steps
-
-After mastering these basics, explore:
-- Blue/Green deployments
-- Canary releases
-- Feature flags
-- GitOps with ArgoCD
-- Advanced rollback strategies
-
-See the advanced CI/CD slides for more.
-
----
-
-[Previous: Workflow Examples](./06-workflow-examples.md) | [Index](./README.md)
+[Previous: Workflow Examples](./06-workflow-examples.md) | [Index](./README.md) | [Next: IDP Vision and Golden Path](./08-idp-vision.md)

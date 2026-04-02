@@ -2,99 +2,112 @@
 
 ---
 
-# What is CI/CD?
+# What is CI/CD and Why Now
 
-## The Problem
+## Why This Deck Exists
 
-Without CI/CD:
-```
-Developer finishes code
-        |
-   "Works on my machine"
-        |
-Manual testing, manual deploy
-        |
-   Bugs found in production
-```
+We are moving from a GitLab-first CI mindset to a GitHub Actions-first model.
+
+Goal:
+- Keep the workflow simple and reliable
+- Standardize delivery for Spring, Next.js, and Python services
+- Build the foundation of our Internal Developer Platform (IDP)
 
 ---
 
-## Continuous Integration (CI)
+## Current Pain Without Standard CI/CD
 
-**Automatically build and test code on every change.**
-
-```
-Developer pushes code
-        |
-   GitHub Actions
-        |
-Build -> Test -> Scan
-        |
-   Pass or Fail
+```text
+Different pipelines per repo
+    ->
+Different quality gates
+    ->
+Hard to know release readiness
+    ->
+Risky production deployments
 ```
 
-**Goal:** Catch bugs early, ensure code quality.
+Typical symptoms:
+- "Works on my machine"
+- Manual deploy steps hidden in personal notes
+- Unclear ownership during release incidents
 
 ---
 
-## Continuous Delivery (CD)
+## CI: Continuous Integration
 
-**Automatically prepare code for deployment.**
+CI means every change is automatically validated.
 
+```text
+Commit / Pull Request
+    ->
+Build + Lint + Test + Basic Security Checks
+    ->
+Pass or fail fast
 ```
-CI passes
-    |
-Build Docker image
-    |
-Push to registry
-    |
-Deploy to dev/stage
-    |
-Manual approval -> Deploy to production
-```
+
+CI objective:
+- Detect problems early
+- Prevent bad merges into `dev`, `stage`, `main`
 
 ---
 
-## Continuous Deployment
+## CD: Continuous Delivery (Our Target)
 
-**Automatically deploy to production (no manual gate).**
+CD means software is always in a deployable state.
 
+```text
+CI pass
+  -> build docker image
+  -> push image to ghcr.io
+  -> deploy to dev/stage automatically
+  -> deploy to prod with manual approval
 ```
-CI passes -> Deploy to staging -> Auto-deploy to production
-```
 
-We recommend **Continuous Delivery** (with manual approval for prod) to start.
+For now we use:
+- Automatic deploy to `dev` and `stage`
+- Manual gate for `prod`
 
 ---
 
-## The Full Picture
+## Continuous Deployment (Later, Not Now)
 
-```
-Code -> Build -> Test -> Scan -> Package -> Deploy -> Monitor
-  |                                            |
-  -------------- Feedback Loop ----------------
+Continuous deployment removes the production approval gate.
+
+```text
+CI pass -> auto deploy all the way to production
 ```
 
-| Phase | CI | CD |
-|-------|----|----|
-| Build | Yes | |
-| Test | Yes | |
-| Security Scan | Yes | |
-| Package (Docker) | | Yes |
-| Deploy | | Yes |
-| Release | | Yes |
+We are intentionally not starting here because:
+- We need stronger observability first
+- We need stable rollback routines first
 
 ---
 
-## Why CI/CD Matters
+## End-to-End Delivery Picture
 
-| Without CI/CD | With CI/CD |
-|---------------|------------|
-| Manual testing | Automated testing |
-| "It works locally" | Same build everywhere |
-| Deploy on Friday (bad idea) | Deploy anytime safely |
-| Bugs in production | Bugs caught early |
-| Hours of manual work | Minutes of automation |
+```text
+Code -> CI Checks -> Docker Image -> Registry -> Deploy -> Monitor
+  ^                                                       |
+  +------------------------- feedback --------------------+
+```
+
+| Phase | Main Owner | Output |
+|------|------------|--------|
+| CI Checks | Developers | Validated commit |
+| Packaging | CI platform | Immutable image |
+| Deployment | Tech lead + platform | Running release |
+| Monitoring | Whole team | Incident signal + learning |
+
+---
+
+## What "Good" Looks Like
+
+Within the team, "good CI/CD" means:
+- Pipeline status is mandatory for merge
+- Same image runs in all environments
+- Production deploy is auditable and reversible
+- Release process is clear for developers, seniors, and tech leads
 
 ---
 

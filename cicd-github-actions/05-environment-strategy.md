@@ -4,162 +4,130 @@
 
 # Environment Strategy
 
-## The Three Core Environments
+## Core Environments
 
-```
-+--------------+    +--------------+    +--------------+
-|     DEV      | -> |    STAGE     | -> |    PROD      |
-|              |    |              |    |              |
-| Integration  |    |      QA      |    |  Live Users  |
-|   Testing    |    |  Validation  |    |              |
-+--------------+    +--------------+    +--------------+
-       |                  |                   |
-   dev branch        stage branch        main branch
+```text
+dev -> stage -> prod
 ```
 
----
-
-## Environment Purposes
-
-| Environment | Purpose | Data | Who Uses |
-|-------------|---------|------|----------|
-| **Dev** | Integration, experiments | Synthetic/mock | Developers |
-| **Stage** | QA, pre-release validation | Sanitized copy | QA + Devs |
-| **Prod** | Real users | Real data | Everyone |
+Each environment has a specific purpose:
+- `dev`: integration and fast validation
+- `stage`: release candidate validation
+- `prod`: real user traffic
 
 ---
 
 ## Branch to Environment Mapping
 
+```text
+feature/* -> PR to dev (CI only)
+dev       -> deploy dev automatically
+stage     -> deploy stage automatically
+main      -> deploy prod with approval
 ```
-feature/* ---> (PR to dev, CI only)
-       |
-       v
-     dev ------> Dev environment (auto-deploy)
-       |
-       v
-    stage -----> Stage environment (auto-deploy)
-       |
-       v
-     main -----> Prod environment (manual approval)
-```
+
+This mapping stays aligned with the existing Git workflow deck.
 
 ---
 
-## GitHub Environments
+## Environment Ownership
 
-Define environments in your repo: **Settings -> Environments**
+| Environment | Primary Owner | Goal |
+|------------|---------------|------|
+| Dev | Developers | Fast feedback |
+| Stage | Senior dev + QA | Release confidence |
+| Prod | Tech lead + on-call | Reliability and safety |
+
+---
+
+## GitHub Environments for Safety
+
+Create environments in repo settings:
+- `development`
+- `staging`
+- `production`
+
+Example usage:
 
 ```yaml
 jobs:
   deploy-prod:
-    runs-on: ubuntu-latest
     environment:
       name: production
       url: https://app.example.com
-    steps:
-      - run: echo "Deploying to production..."
-```
-
-Environment features:
-- **Protection rules** (required reviewers)
-- **Wait timers** (delay before deploy)
-- **Environment secrets** (per-environment)
-
----
-
-## Environment Protection Rules
-
-For production environment, configure:
-
-- Required reviewers (Tech Lead approval)
-- Wait timer (optional delay)
-- Branch restrictions (only `main` can deploy)
-
-```
-Deploy to Prod
-      |
-  Waiting for approval...
-      |
-  Tech Lead approves
-      |
-  Deployment starts
 ```
 
 ---
 
-## Configuration Management
+## Production Protection Rules
 
-**Never hardcode environment-specific values!**
+For `production` environment:
+- Required reviewers (tech lead at minimum)
+- Optional wait timer
+- Restrict to `main` branch deploys
 
-```yaml
-# Bad
-database_url: "postgres://prod-db:5432/myapp"
-
-# Good
-database_url: "${DATABASE_URL}"
-```
+This creates an explicit approval checkpoint.
 
 ---
 
-## Configuration Per Environment
+## Secrets and Configuration
 
-| Method | Use Case |
-|--------|----------|
-| **GitHub Secrets** | API keys, passwords |
-| **Environment Variables** | URLs, feature flags |
-| **Config files** | Application settings |
-| **Azure Key Vault** | Production secrets |
+Use the right storage per concern:
+- Repository secrets: shared technical values (for example, registry auth)
+- Environment secrets: environment-specific credentials
+- Azure Key Vault: production secret source when needed
+
+Never commit secrets in Git.
 
 ---
 
-## GitHub Secrets: Repository vs Environment
+## Configuration Principles
 
-```yaml
-# Repository secret (available to all environments)
-${{ secrets.REGISTRY_TOKEN }}
-
-# Environment secret (only in that environment)
-jobs:
-  deploy:
-    environment: production
-    steps:
-      - run: echo "${{ secrets.PROD_DATABASE_URL }}"
+```text
+Code stays identical across environments
+Configuration values change per environment
 ```
+
+Good examples of environment-specific values:
+- Database URL
+- Third-party API keys
+- Feature flags
+- Horizontal scale limits
 
 ---
 
 ## Environment Parity
 
-**Keep environments as similar as possible.**
+| Item | Dev | Stage | Prod |
+|------|-----|-------|------|
+| Docker image | Same | Same | Same |
+| Deployment template | Same | Same | Same |
+| Runtime values | Different | Different | Different |
 
-| Aspect | Dev | Stage | Prod |
-|--------|-----|-------|------|
-| Same Docker image | Yes | Yes | Yes |
-| Same deployment scripts | Yes | Yes | Yes |
-| Same app config structure | Yes | Yes | Yes |
-| Different values | URLs, secrets, scale |
-
-Only difference = configuration values, not code or images.
+Parity reduces "works in stage but fails in prod" incidents.
 
 ---
 
-## Our Setup (Azure/Rancher)
+## Azure Kubernetes and Rancher Mapping
 
-```
+```text
 GitHub Actions
-      |
-      | pushes image to
-      v
-GitHub Container Registry (ghcr.io)
-      |
-      | pulls image
-      v
-Azure Kubernetes (Rancher)
-      |
-      v
-  [dev] [stage] [prod] namespaces
+  -> pulls/pushes ghcr.io images
+  -> deploys manifests/helm values
+  -> targets Rancher-managed clusters
+  -> uses separate namespaces per environment
 ```
+
+---
+
+## Promotion Checklist
+
+Before promoting `stage -> main`:
+- CI gates are green
+- Stage smoke checks are green
+- Release tag/version is prepared
+- Rollback target is known
+- Prod approval owner is available
 
 ---
 

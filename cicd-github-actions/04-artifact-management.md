@@ -6,162 +6,160 @@
 
 ## What is an Artifact?
 
-A **built, versioned, deployable package** of your application.
+A built, versioned, deployable output.
 
-For us, this means **Docker images**.
+For this platform, the primary artifact is a Docker image.
 
-```
-Git Commit ----> CI Build ----> Docker Image ----> Deploy
-    |                              |
- (source code)              (runnable thing)
+```text
+Git commit -> CI checks -> Docker image -> deploy
 ```
 
-**Production runs Docker images, not Git commits directly.**
+Production must run images, not raw source code.
 
 ---
 
 ## GitHub Container Registry (ghcr.io)
 
-Our Docker images live in GitHub Container Registry:
+Image naming pattern:
 
-```
+```text
 ghcr.io/OWNER/IMAGE_NAME:TAG
 ```
 
-Example:
-```
-ghcr.io/beebay/backend-api:1.2.0
-ghcr.io/beebay/frontend-app:1.2.0
-ghcr.io/beebay/ai-service:1.2.0
+Examples:
+
+```text
+ghcr.io/beebay/backend-api:sha-a1b2c3d
+ghcr.io/beebay/frontend-app:sha-a1b2c3d
+ghcr.io/beebay/ai-service:sha-a1b2c3d
 ```
 
-**Benefits:** Integrated with GitHub, same access control, free for public repos.
+Benefits:
+- Same identity and permissions model as GitHub repos
+- Easy traceability from commit to image
+- Simple integration with GitHub Actions
 
 ---
 
 ## Immutable Versioned Images
 
-**Golden Rule:** Once built, never modify. Create new version instead.
+Golden rule:
+- Never rebuild and overwrite the same version tag with new code
+- Build a new tag for every change
 
-```
+```text
 Good:
-  myapp:1.4.1  -> stable release
-  myapp:1.4.2  -> new feature
-  myapp:1.4.3  -> hotfix
+  myapp:v1.4.1   -> stable release
+  myapp:v1.4.2   -> new feature
+  myapp:sha-abc1234 -> exact commit
 
 Bad:
-  myapp:latest  -> what version is this??
-  myapp:1.4.1   -> rebuilt with different code (broken!)
+  myapp:latest   -> unclear content
+  myapp:v1.4.1   -> rebuilt with different code
 ```
 
 ---
 
-## Tagging Strategy
+## Tagging Strategy (Recommended)
 
 ```bash
-# Semantic version (for releases)
-ghcr.io/beebay/api:1.4.2
+# Always generate commit tag
+ghcr.io/beebay/api:sha-a1b2c3d
 
-# Git SHA (for traceability)
-ghcr.io/beebay/api:a1b2c3d
+# Add semver tag for release commits
+ghcr.io/beebay/api:v1.4.2
 
-# Branch-based (for dev/testing)
+# Optional helper tags for non-prod
 ghcr.io/beebay/api:dev
 ghcr.io/beebay/api:stage
-
-# Avoid for production:
-ghcr.io/beebay/api:latest   # What version??
 ```
+
+Production should deploy semver or SHA tags, never `latest`.
 
 ---
 
-## Building Docker in GitHub Actions
+## Build and Push in GitHub Actions
 
 ```yaml
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v5
         with:
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 ```
 
 ---
 
-## Image Labels for Traceability
-
-Add metadata to your Docker images:
+## Image Metadata for Traceability
 
 ```dockerfile
-# In your Dockerfile
 LABEL org.opencontainers.image.source=https://github.com/beebay/api
 LABEL org.opencontainers.image.revision=$GIT_SHA
 LABEL org.opencontainers.image.created=$BUILD_DATE
 ```
 
-Every deployed image should answer:
-- What Git commit built this?
-- When was it built?
-- What pipeline built it?
+Each deployed image should answer:
+- Which commit produced it
+- Which pipeline produced it
+- When it was produced
 
 ---
 
 ## Build Once, Deploy Many
 
+```text
+Git commit
+   ->
+Build image once
+   ->
+Deploy same image to dev, stage, prod
 ```
-                 +---> Dev Environment
-                 |
-Git Commit       |
-    |            |
-  Build     Same Image ---> Stage Environment
-    |            |
-Docker Image     |
-    |            +---> Prod Environment
-  Push to
-  ghcr.io
 
-Never rebuild for different environments!
-Use environment variables for config differences.
-```
+Do not rebuild for each environment.
+Use configuration and secrets to vary behavior.
 
 ---
 
-## Docker Compose for Local Dev
+## Docker Compose as Local Contract
 
 ```yaml
-# docker-compose.yml
 services:
   backend:
     build: ./backend
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_URL=postgres://db:5432/app
-
   frontend:
     build: ./frontend
-    ports:
-      - "3000:3000"
-
-  db:
-    image: postgres:15
+  ai-service:
+    build: ./ai
 ```
 
-Same Dockerfile used locally and in CI.
+Use the same Dockerfiles locally and in CI to reduce drift.
+
+---
+
+## Retention and Cleanup
+
+Keep registry clean:
+- Retain all release tags (`v*`)
+- Retain recent SHA tags for incident debugging
+- Delete stale branch tags on schedule
+
+This keeps costs predictable and rollback history usable.
 
 ---
 

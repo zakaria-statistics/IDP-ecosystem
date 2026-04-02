@@ -1,193 +1,161 @@
-[Previous: What is CI/CD](./01-what-is-cicd.md) | [Index](./README.md) | [Next: Pipeline Stages](./03-pipeline-stages.md)
+[Previous: What is CI/CD and Why Now](./01-what-is-cicd.md) | [Index](./README.md) | [Next: Pipeline Stages](./03-pipeline-stages.md)
 
 ---
 
 # GitHub Actions Basics
 
-## Key Concepts
+## Core Vocabulary
 
-| Term | Definition |
-|------|------------|
-| **Workflow** | An automated process (YAML file) |
-| **Event** | What triggers the workflow (push, PR, etc.) |
-| **Job** | A set of steps that run on the same runner |
-| **Step** | Individual task within a job |
-| **Action** | Reusable unit of code (from marketplace or custom) |
-| **Runner** | Server that runs your workflows |
+| Term | Meaning |
+|------|---------|
+| Workflow | YAML automation file in `.github/workflows/` |
+| Event | Trigger (`pull_request`, `push`, `workflow_dispatch`) |
+| Job | Group of steps on one runner |
+| Step | Single command or reusable action |
+| Runner | Machine that executes jobs |
+| Environment | Protected deploy target (dev/stage/prod) |
 
 ---
 
-## Workflow File Location
+## Where Workflows Live
 
-```
-your-repo/
+```text
+repo/
   .github/
     workflows/
-      ci.yml          # Your CI workflow
-      deploy.yml      # Your deploy workflow
-      ...
+      ci.yml
+      build-image.yml
+      deploy.yml
+      security.yml
 ```
 
-Workflows live in `.github/workflows/` as YAML files.
+Treat workflows as production code:
+- Code review required
+- Small changes preferred
+- Owners and standards documented
 
 ---
 
-## Basic Workflow Structure
+## Minimal CI Workflow
 
 ```yaml
-name: CI Pipeline
+name: ci
 
-on:                          # Events that trigger
-  push:
-    branches: [main, dev]
+on:
   pull_request:
-    branches: [main, dev]
+    branches: [dev, stage, main]
+  push:
+    branches: [dev, stage, main]
 
-jobs:                        # Jobs to run
-  build:
-    runs-on: ubuntu-latest   # Runner type
-    steps:                   # Steps in the job
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/checkout@v4
-      - name: Run tests
-        run: npm test
+      - run: echo "run build, lint, test"
 ```
 
 ---
 
-## Common Triggers (Events)
+## Job Dependencies (Flow Control)
+
+```yaml
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "lint + tests"
+
+  build-image:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "docker build/push"
+
+  deploy-dev:
+    if: github.ref == 'refs/heads/dev'
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "deploy"
+```
+
+Use `needs:` for explicit stage ordering.
+
+---
+
+## Trigger Strategy for Our Branch Model
 
 ```yaml
 on:
-  # On push to specific branches
-  push:
-    branches: [main, dev, stage]
-
-  # On pull request
   pull_request:
-    branches: [main]
-
-  # Manual trigger
+    branches: [dev, stage, main]
+  push:
+    branches: [dev, stage, main]
   workflow_dispatch:
-
-  # Scheduled (cron)
-  schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM
 ```
+
+Meaning:
+- PR: verify quality before merge
+- Push on permanent branches: build/publish/deploy by environment
+- Manual trigger: controlled re-run or emergency deployment
 
 ---
 
-## Jobs and Steps
+## Security Baseline in Workflow Files
 
 ```yaml
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      # Use a pre-built action
-      - uses: actions/checkout@v4
+permissions:
+  contents: read
+  packages: write
 
-      # Run a command
-      - name: Install dependencies
-        run: npm install
-
-      # Run multiple commands
-      - name: Test
-        run: |
-          npm run lint
-          npm test
-```
-
----
-
-## Job Dependencies
-
-```yaml
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-      - run: echo "Building..."
-
-  test:
-    needs: build              # Runs after build
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Testing..."
-
-  deploy:
-    needs: [build, test]      # Runs after both
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "Deploying..."
 ```
+
+Baseline rules:
+- Keep permissions minimal
+- Use pinned major versions (`@v4`, `@v5`)
+- Use secrets only through GitHub Secrets/Environments
 
 ---
 
-## Environment Variables & Secrets
+## Useful GitHub Context Values
+
+| Expression | Usage |
+|-----------|-------|
+| `${{ github.sha }}` | Immutable image tag |
+| `${{ github.ref_name }}` | Branch-aware logic |
+| `${{ github.event_name }}` | PR vs push behavior |
+| `${{ github.repository }}` | Registry naming |
+| `${{ github.actor }}` | Audit trail |
+
+---
+
+## Reuse Instead of Copy/Paste
+
+Options:
+- Reusable workflows (`workflow_call`) for shared CI logic
+- Composite actions for shared scripting steps
+
+Benefits:
+- Consistency across Spring/Next/Python repos
+- Faster onboarding
+- Lower maintenance cost
+
+---
+
+## Concurrency for Safer Pipelines
 
 ```yaml
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    env:
-      NODE_ENV: production    # Job-level env var
-    steps:
-      - name: Deploy
-        env:
-          API_KEY: ${{ secrets.API_KEY }}  # From secrets
-        run: |
-          echo "Deploying to $NODE_ENV"
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
 ```
 
-**Secrets:** Settings -> Secrets and variables -> Actions
+Prevents multiple deploy jobs from racing on the same branch.
 
 ---
 
-## Useful Built-in Variables
-
-| Variable | Value |
-|----------|-------|
-| `github.sha` | Commit SHA |
-| `github.ref_name` | Branch or tag name |
-| `github.event_name` | Event type (push, pull_request) |
-| `github.repository` | Owner/repo name |
-| `github.actor` | User who triggered |
-
-```yaml
-- run: echo "Deploying ${{ github.sha }}"
-```
-
----
-
-## Common Actions
-
-| Action | Purpose |
-|--------|---------|
-| `actions/checkout@v4` | Clone your repo |
-| `actions/setup-node@v4` | Setup Node.js |
-| `actions/setup-java@v4` | Setup Java/JDK |
-| `actions/setup-python@v5` | Setup Python |
-| `docker/build-push-action@v5` | Build & push Docker |
-| `docker/login-action@v3` | Login to registry |
-
----
-
-## Workflow Visualization
-
-```
-                    Workflow (ci.yml)
-                          |
-         -----------------+------------------
-         |                |                 |
-      [build]          [lint]           [test]
-         |                |                 |
-         -----------------+-----------------
-                          |
-                     [deploy]
-```
-
-Jobs can run in **parallel** or **sequentially** (with `needs:`).
-
----
-
-[Previous: What is CI/CD](./01-what-is-cicd.md) | [Index](./README.md) | [Next: Pipeline Stages](./03-pipeline-stages.md)
+[Previous: What is CI/CD and Why Now](./01-what-is-cicd.md) | [Index](./README.md) | [Next: Pipeline Stages](./03-pipeline-stages.md)

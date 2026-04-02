@@ -4,188 +4,51 @@
 
 # Workflow Examples
 
-## Example 1: Spring Boot CI
+## Example Set Goal
 
-```yaml
-# .github/workflows/spring-ci.yml
-name: Spring Boot CI
-
-on:
-  push:
-    branches: [main, dev, stage]
-  pull_request:
-    branches: [main, dev]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'maven'
-
-      - name: Build with Maven
-        run: mvn clean package -DskipTests
-
-      - name: Run tests
-        run: mvn test
-```
+These examples implement a simple, production-usable baseline:
+- PR quality checks
+- Docker image build/push to GHCR
+- Branch-based deployment to dev/stage/prod
 
 ---
 
-## Example 2: Next.js CI
+## 1) PR Checks (`pull_request`)
 
 ```yaml
-# .github/workflows/nextjs-ci.yml
-name: Next.js CI
+name: pr-checks
 
 on:
-  push:
-    branches: [main, dev, stage]
   pull_request:
-    branches: [main, dev]
+    branches: [dev, stage, main]
 
 jobs:
-  build:
+  quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Build
-        run: npm run build
-
-      - name: Test
-        run: npm test
+      - run: echo "run lint + unit tests"
 ```
+
+Use this workflow to block low-quality merges early.
 
 ---
 
-## Example 3: Python CI
+## 2) Build and Push Image (`push`)
 
 ```yaml
-# .github/workflows/python-ci.yml
-name: Python CI
+name: build-image
 
 on:
   push:
-    branches: [main, dev, stage]
-  pull_request:
-    branches: [main, dev]
+    branches: [dev, stage, main]
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pytest ruff
-
-      - name: Lint
-        run: ruff check .
-
-      - name: Test
-        run: pytest
-```
-
----
-
-## Example 4: Docker Build & Push
-
-```yaml
-# .github/workflows/docker.yml
-name: Docker Build
-
-on:
-  push:
-    branches: [main, dev, stage]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-```
-
----
-
-## Example 5: Complete CI/CD Pipeline
-
-```yaml
-name: CI/CD Pipeline
-
-on:
-  push:
-    branches: [main, dev, stage]
-  pull_request:
-    branches: [main, dev]
-
-jobs:
-  # ===== CI Jobs =====
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm ci
-      - run: npm run lint
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm ci
-      - run: npm test
-
-  # ===== Build =====
-  build:
-    needs: [lint, test]
+  image:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -197,144 +60,173 @@ jobs:
       - uses: docker/build-push-action@v5
         with:
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          tags: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+```
 
-  # ===== CD Jobs =====
+---
+
+## 3) Branch-Based Deploy
+
+```yaml
+name: deploy
+
+on:
+  workflow_run:
+    workflows: ["build-image"]
+    types: [completed]
+
+jobs:
   deploy-dev:
-    if: github.ref == 'refs/heads/dev'
-    needs: build
+    if: github.event.workflow_run.head_branch == 'dev'
     runs-on: ubuntu-latest
     environment: development
     steps:
-      - run: echo "Deploying to dev..."
+      - run: echo "deploy to dev"
 
   deploy-stage:
-    if: github.ref == 'refs/heads/stage'
-    needs: build
+    if: github.event.workflow_run.head_branch == 'stage'
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - run: echo "Deploying to stage..."
+      - run: echo "deploy to stage"
 
   deploy-prod:
-    if: github.ref == 'refs/heads/main'
-    needs: build
+    if: github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
-    environment: production  # Requires approval!
+    environment: production
     steps:
-      - run: echo "Deploying to production..."
+      - run: echo "deploy to prod (approval required)"
 ```
 
 ---
 
-## Example 6: Security Scanning
+## 4) Spring Boot Quality Job
 
 ```yaml
-name: Security
-
-on:
-  push:
-    branches: [main, dev]
-  schedule:
-    - cron: '0 2 * * 1'  # Weekly on Monday
-
 jobs:
-  codeql:
+  spring-ci:
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+      - uses: actions/setup-java@v4
         with:
-          languages: javascript, java
-
-      - name: Build (if needed)
-        run: npm run build
-
-      - name: Perform Analysis
-        uses: github/codeql-action/analyze@v3
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: mvn -B clean verify
 ```
 
 ---
 
-## Example 7: Manual Deployment
+## 5) Next.js Quality Job
 
 ```yaml
-name: Manual Deploy
+jobs:
+  next-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test -- --ci
+      - run: npm run build
+```
 
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy'
-        required: true
-        type: choice
-        options:
-          - dev
-          - stage
-          - prod
-      image_tag:
-        description: 'Image tag to deploy'
-        required: true
+---
 
+## 6) Python Quality Job
+
+```yaml
+jobs:
+  python-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pip install pytest ruff
+      - run: ruff check .
+      - run: pytest
+```
+
+---
+
+## 7) Reusable Workflow Call
+
+`repo A` can call shared CI logic from a platform repo:
+
+```yaml
+jobs:
+  shared-ci:
+    uses: beebay/platform-workflows/.github/workflows/service-ci.yml@main
+    with:
+      runtime: node
+      run_tests: true
+    secrets: inherit
+```
+
+This supports IDP-style standardization with local flexibility.
+
+---
+
+## 8) Deployment to Kubernetes (Conceptual)
+
+```yaml
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment }}
+    environment: staging
     steps:
-      - name: Deploy
-        run: |
-          echo "Deploying ${{ github.event.inputs.image_tag }}"
-          echo "to ${{ github.event.inputs.environment }}"
+      - run: echo "authenticate to cluster"
+      - run: echo "set image tag in helm values"
+      - run: echo "helm upgrade --install ..."
+      - run: echo "run smoke checks"
 ```
+
+In production, keep this behind environment approval.
 
 ---
 
-## Conditional Execution Tips
+## 9) Path-Based Builds for Mono Repos
 
 ```yaml
-# Only on specific branch
-if: github.ref == 'refs/heads/main'
-
-# Only on PR
-if: github.event_name == 'pull_request'
-
-# Skip if commit message contains [skip ci]
-if: "!contains(github.event.head_commit.message, '[skip ci]')"
-
-# Only when specific files change
 on:
-  push:
+  pull_request:
     paths:
-      - 'src/**'
-      - 'package.json'
+      - "backend/**"
+      - "frontend/**"
+      - "ai/**"
 ```
+
+This prevents unnecessary jobs and keeps feedback faster.
 
 ---
 
-## Caching Dependencies
+## 10) Caching Quick Reference
 
 ```yaml
-# Node.js
+# Node
 - uses: actions/setup-node@v4
   with:
-    cache: 'npm'
+    cache: npm
 
-# Maven
+# Java
 - uses: actions/setup-java@v4
   with:
-    cache: 'maven'
+    cache: maven
 
 # Python
 - uses: actions/setup-python@v5
   with:
-    cache: 'pip'
+    cache: pip
 ```
-
-Caching speeds up builds by reusing downloaded dependencies.
 
 ---
 
