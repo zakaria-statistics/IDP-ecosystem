@@ -6,7 +6,7 @@
 
 ## Why This Deck Exists
 
-We are moving from a GitLab-first CI mindset to a GitHub Actions-first model.
+We are starting fresh with a GitHub Actions-first model.
 
 Goal:
 - Keep the workflow simple and reliable

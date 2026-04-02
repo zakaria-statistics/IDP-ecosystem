@@ -1,4 +1,4 @@
-[Previous: GitLab to GitHub Actions Migration](./11-migration-from-gitlab.md) | [Index](./README.md)
+[Previous: Greenfield Platform Bootstrap](./11-greenfield-bootstrap.md) | [Index](./README.md)
 
 ---
 
@@ -81,4 +81,4 @@ When phase 1-3 are stable, then move to:
 
 ---
 
-[Previous: GitLab to GitHub Actions Migration](./11-migration-from-gitlab.md) | [Index](./README.md)
+[Previous: Greenfield Platform Bootstrap](./11-greenfield-bootstrap.md) | [Index](./README.md)

@@ -1,4 +1,4 @@
-[Previous: Roles and Operating Model](./09-roles-and-operating-model.md) | [Index](./README.md) | [Next: GitLab to GitHub Actions Migration](./11-migration-from-gitlab.md)
+[Previous: Roles and Operating Model](./09-roles-and-operating-model.md) | [Index](./README.md) | [Next: Greenfield Platform Bootstrap](./11-greenfield-bootstrap.md)
 
 ---
 
@@ -90,4 +90,4 @@ After mitigation:
 
 ---
 
-[Previous: Roles and Operating Model](./09-roles-and-operating-model.md) | [Index](./README.md) | [Next: GitLab to GitHub Actions Migration](./11-migration-from-gitlab.md)
+[Previous: Roles and Operating Model](./09-roles-and-operating-model.md) | [Index](./README.md) | [Next: Greenfield Platform Bootstrap](./11-greenfield-bootstrap.md)

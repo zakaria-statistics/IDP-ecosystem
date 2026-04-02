@@ -10,11 +10,14 @@ Audience:
 Scope:
 - Fundamentals first (no advanced GitOps/canary topics in this deck)
 - Realistic workflow for our stack and branch model
-- GitHub Actions after GitLab CI migration
+- Greenfield GitHub Actions setup
 
 ---
 
 ## Table of Contents
+
+### Architecture
+0. [IDP Architecture, GitHub Actions Workflow, and CI/CD Patterns](./00-idp-architecture.md)
 
 ### Foundation
 1. [What is CI/CD and Why Now](./01-what-is-cicd.md)
@@ -31,7 +34,7 @@ Scope:
 8. [IDP Vision and Golden Path](./08-idp-vision.md)
 9. [Roles and Operating Model](./09-roles-and-operating-model.md)
 10. [Release and Rollback Basics](./10-release-and-rollback-basics.md)
-11. [GitLab to GitHub Actions Migration](./11-migration-from-gitlab.md)
+11. [Greenfield Platform Bootstrap](./11-greenfield-bootstrap.md)
 12. [Adoption Roadmap](./12-adoption-roadmap.md)
 
 ---
