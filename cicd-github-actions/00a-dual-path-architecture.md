@@ -40,6 +40,19 @@ This document breaks down the two deployment paths in our IDP, focusing on the *
 
 ---
 
+## Branch Strategy
+
+| Branch | Maps To | Deploys To | Purpose |
+|--------|---------|------------|---------|
+| `feature/*` | PR to `dev` | — | Development work |
+| `dev` | DEV environment | Your DEV VM | Early validation, smoke tests |
+| `stage` | QA environment | Your QA VM | Integration, e2e testing |
+| `main` | Release | GHCR (`:latest`, `:vX.Y.Z`) | Client-ready artifacts |
+
+**Promotion path:** `feature/*` → `dev` → `stage` → `main`
+
+---
+
 ## Path Distinction
 
 | Aspect | Your Infra Path | Client Infra Path |
@@ -82,8 +95,8 @@ This document breaks down the two deployment paths in our IDP, focusing on the *
 
 | Environment | Purpose | Deployed From | Tests Run |
 |-------------|---------|---------------|-----------|
-| **DEV** | Early validation, smoke tests | `develop` branch, `:dev-<sha>` tag | Smoke, basic health |
-| **QA** | Full integration, e2e testing | After DEV passes, `:qa-<sha>` tag | Integration, e2e, regression |
+| **DEV** | Early validation, smoke tests | `dev` branch, `:dev-<sha>` tag | Smoke, basic health |
+| **QA** | Full integration, e2e testing | `stage` branch, `:stage-<sha>` tag | Integration, e2e, regression |
 
 ---
 
@@ -92,47 +105,34 @@ This document breaks down the two deployment paths in our IDP, focusing on the *
 ### Flow Diagram
 
 ```text
-     +-------------+
-     |   PR / Push |
-     +------+------+
-            |
-     +------v------+
-     |    Build    |
-     |  + Unit Test|
-     +------+------+
-            |
-     +------v------+
-     | Push to GHCR|
-     | :dev-<sha>  |
-     +------+------+
-            |
-     +------v------+
-     | Deploy DEV  |
-     | (OVH VM)    |
-     +------+------+
-            |
-     +------v------+
-     | Smoke Test  |
-     +------+------+
-            |
-            | Pass?
-     +------v------+
-     | Deploy QA   |
-     | (OVH VM)    |
-     +------+------+
-            |
-     +------v------+
-     | E2E Tests   |
-     +------+------+
-            |
-            | Pass?
-     +------v------+
-     | Tag :release|
-     | Push GHCR   |
-     +------+------+
-            |
-            v
-   Ready for Client
+feature/* ──────────────────────────────────────────────────────────────
+     │
+     │ PR
+     ▼
++----+-----+      +-----------+      +-------------+      +-----------+
+| dev      | ---> |  Build    | ---> | Push GHCR   | ---> | Deploy    |
+| branch   |      |  + Test   |      | :dev-<sha>  |      | DEV VM    |
++----------+      +-----------+      +-------------+      +-----+-----+
+                                                                │
+                                                          Smoke Test
+                                                                │
+     ┌──────────────────────────────────────────────────────────┘
+     │ Merge to stage (after DEV validated)
+     ▼
++----+-----+      +-----------+      +-------------+      +-----------+
+| stage    | ---> |  Build    | ---> | Push GHCR   | ---> | Deploy    |
+| branch   |      |  + Test   |      | :stage-<sha>|      | QA VM     |
++----------+      +-----------+      +-------------+      +-----+-----+
+                                                                │
+                                                          E2E Tests
+                                                                │
+     ┌──────────────────────────────────────────────────────────┘
+     │ Merge to main (after QA validated)
+     ▼
++----+-----+      +---------------+
+| main     | ---> | Tag :release  | ---> Ready for Client
+| branch   |      | :v1.x, :latest|
++----------+      +---------------+
 ```
 
 ### GitHub Actions Workflow
@@ -143,9 +143,9 @@ name: Dev/QA Pipeline
 
 on:
   push:
-    branches: [develop, main]
+    branches: [dev, stage, main]
   pull_request:
-    branches: [develop]
+    branches: [dev, stage]
 
 env:
   REGISTRY: ghcr.io
@@ -153,7 +153,7 @@ env:
 
 jobs:
   # ============================================
-  # Stage 1: Build and Push
+  # Stage 1: Build and Push (all branches)
   # ============================================
   build:
     runs-on: ubuntu-latest
@@ -161,9 +161,22 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
+      image_tag: ${{ steps.set-tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set image tag based on branch
+        id: set-tag
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            echo "tag=dev-${{ github.sha }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/stage" ]]; then
+            echo "tag=stage-${{ github.sha }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "tag=release-${{ github.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=pr-${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -172,26 +185,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=dev-${{ github.sha }}
-
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.set-tag.outputs.tag }}
 
   # ============================================
-  # Stage 2: Deploy to DEV
+  # Stage 2: Deploy to DEV (dev branch only)
   # ============================================
   deploy-dev:
     needs: build
+    if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -203,7 +209,7 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             cd /opt/app
-            export IMAGE_TAG=dev-${{ github.sha }}
+            export IMAGE_TAG=${{ needs.build.outputs.image_tag }}
             docker compose pull
             docker compose up -d --remove-orphans
 
@@ -214,10 +220,11 @@ jobs:
             http://${{ secrets.DEV_VM_HOST }}:8080/health
 
   # ============================================
-  # Stage 3: Deploy to QA
+  # Stage 3: Deploy to QA (stage branch only)
   # ============================================
   deploy-qa:
-    needs: deploy-dev
+    needs: build
+    if: github.ref == 'refs/heads/stage'
     runs-on: ubuntu-latest
     environment: qa
     steps:
@@ -231,7 +238,7 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             cd /opt/app
-            export IMAGE_TAG=dev-${{ github.sha }}
+            export IMAGE_TAG=${{ needs.build.outputs.image_tag }}
             docker compose pull
             docker compose up -d --remove-orphans
 
@@ -244,7 +251,7 @@ jobs:
   # Stage 4: Promote to Release (main only)
   # ============================================
   promote-release:
-    needs: deploy-qa
+    needs: build
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
@@ -258,12 +265,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Promote to release tag
+      - name: Promote to release tags
         run: |
-          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }}
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }} \
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }} \
                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-${{ github.sha }} \
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image_tag }} \
                      ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ github.run_number }}
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ github.run_number }}
@@ -274,7 +281,7 @@ jobs:
 ## Docker Compose for Your VMs
 
 ```yaml
-# docker-compose.yml (on DEV/QA VMs)
+# docker-compose.yml (on DEV VM: IMAGE_TAG=dev-<sha>, on QA VM: IMAGE_TAG=stage-<sha>)
 services:
   app:
     image: ghcr.io/your-org/your-app:${IMAGE_TAG:-latest}
@@ -358,23 +365,43 @@ After your image passes QA and is tagged for release:
 ## Tag Strategy Summary
 
 ```text
-Branch/Event          Image Tag              Environment
-─────────────────────────────────────────────────────────
-PR / develop     -->  :dev-<sha>        -->  Your DEV VM
-After DEV pass   -->  :qa-<sha>         -->  Your QA VM
-main + QA pass   -->  :v1.2.3, :latest  -->  GHCR (Client-ready)
+Branch              Image Tag              Environment         Purpose
+────────────────────────────────────────────────────────────────────────
+dev branch     -->  :dev-<sha>        -->  Your DEV VM    -->  Early validation
+stage branch   -->  :stage-<sha>      -->  Your QA VM     -->  E2E / Integration
+main branch    -->  :v1.2.3, :latest  -->  GHCR release   -->  Client-ready
+```
+
+### Branch Flow
+
+```text
+feature/* ──► dev ──► stage ──► main
+              │        │         │
+              ▼        ▼         ▼
+            DEV VM   QA VM    GHCR :release
 ```
 
 ---
 
-## Required GitHub Secrets
+## Required GitHub Configuration
 
-| Secret | Environment | Purpose |
-|--------|-------------|---------|
-| `DEV_VM_HOST` | dev | DEV VM IP/hostname |
-| `QA_VM_HOST` | qa | QA VM IP/hostname |
-| `VM_USER` | all | SSH username |
-| `VM_SSH_KEY` | all | SSH private key |
+### Environments
+
+Create these environments in GitHub repo settings:
+
+| Environment | Used By Branch | Protection Rules |
+|-------------|----------------|------------------|
+| `dev` | `dev` | None (auto-deploy) |
+| `qa` | `stage` | Optional: require approval |
+
+### Secrets
+
+| Secret | Scope | Purpose |
+|--------|-------|---------|
+| `DEV_VM_HOST` | `dev` environment | DEV VM IP/hostname |
+| `QA_VM_HOST` | `qa` environment | QA VM IP/hostname |
+| `VM_USER` | Repository | SSH username (shared) |
+| `VM_SSH_KEY` | Repository | SSH private key (shared) |
 
 ---
 
