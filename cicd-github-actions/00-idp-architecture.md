@@ -16,25 +16,41 @@
 |  Service Repos     | -> | GitHub (SCM + PR +    | -> | GitHub Actions       |
 |  spring / next /   |    | branch protection)    |    | workflow execution   |
 |  python services   |    +-----------------------+    +----------+-----------+
-+--------------------+                                        |
-                                                               v
-                                                     +----------------------+
-                                                     | GHCR (Docker images) |
-                                                     +----------+-----------+
-                                                                |
-                                                                v
-                                                    +------------------------+
-                                                    | Azure K8s via Rancher  |
-                                                    | namespaces: dev/stage/ |
-                                                    | prod                   |
-                                                    +-----------+------------+
-                                                                |
-                                                                v
-                                                    +------------------------+
-                                                    | Monitoring + Alerts    |
-                                                    | logs/metrics/traces    |
-                                                    +------------------------+
++--------------------+                                            |
+                                                                  v
+                                                        +--------------------+
+                                                        | GHCR (Docker imgs) |
+                                                        | :dev / :qa / :rel  |
+                                                        +----------+---------+
+                                                                   |
+                      +----------------------------+---------------+
+                      |                            |
+                      v                            v
+        +-------------------------+    +---------------------------+
+        |    YOUR INFRA PATH      |    |    CLIENT INFRA PATH      |
+        |    (Pre-release)        |    |    (Delivery)             |
+        +-------------------------+    +---------------------------+
+        |                         |    |                           |
+        | DEV env (OVH VM/Docker) |    | Client pulls :release     |
+        |   ↓ smoke tests         |    | from GHCR or their own    |
+        | QA env (OVH VM/Docker)  |    | registry (ACR/ECR)        |
+        |   ↓ e2e / integration   |    |                           |
+        |   ↓ validate            |    | Azure K8s via Rancher     |
+        |                         |    | namespaces: dev/stage/prod|
+        | Promote to :release     |    |                           |
+        +------------+------------+    +--------------+------------+
+                     |                                |
+                     +----------------+---------------+
+                                      |
+                                      v
+                          +------------------------+
+                          | Monitoring + Alerts    |
+                          | logs/metrics/traces    |
+                          +------------------------+
 ```
+
+> **Two Paths**: Your infra for pre-release validation (dev/qa), Client infra for final delivery.
+> See [00a-dual-path-architecture.md](./00a-dual-path-architecture.md) for detailed breakdown.
 
 ---
 
