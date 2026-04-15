@@ -18,6 +18,9 @@ Scope:
 
 ### Architecture
 0. [IDP Architecture, GitHub Actions Workflow, and CI/CD Patterns](./00-idp-architecture.md)
+   - [0a. Dual-Path Architecture: Your Infra vs Client Infra](./00a-dual-path-architecture.md)
+   - [0b. Ephemeral Azure VMs for Dev/QA](./00b-ephemeral-azure-vm.md)
+   - [0c. Ephemeral Azure Container Instances (ACI)](./00c-ephemeral-azure-aci.md)
 
 ### Foundation
 1. [What is CI/CD and Why Now](./01-what-is-cicd.md)
