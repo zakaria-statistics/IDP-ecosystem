@@ -1,8 +1,14 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const API_URL = process.env.RAG_API_URL || "http://localhost:8080";
+
+interface Metrics {
+  heap: { usedMB: number; maxMB: number; percentUsed: number };
+  threads: { live: number; daemon: number };
+  uptime: number;
+}
 
 export default function Home() {
   const [question, setQuestion] = useState("");
@@ -11,7 +17,28 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [showMetrics, setShowMetrics] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch metrics periodically when panel is open
+  useEffect(() => {
+    if (!showMetrics) return;
+
+    const fetchMetrics = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/metrics`);
+        const data = await res.json();
+        setMetrics(data);
+      } catch (err) {
+        console.error("Failed to fetch metrics");
+      }
+    };
+
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 2000);
+    return () => clearInterval(interval);
+  }, [showMetrics]);
 
   const handleQuery = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,9 +100,82 @@ export default function Home() {
     }
   };
 
+  const formatUptime = (ms: number) => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  };
+
   return (
-    <main style={{ maxWidth: "800px", margin: "0 auto", padding: "2rem" }}>
-      <h1 style={{ marginBottom: "1.5rem" }}>RAG Assistant</h1>
+    <main style={{ maxWidth: "900px", margin: "0 auto", padding: "2rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+        <h1>RAG Assistant</h1>
+        <button
+          onClick={() => setShowMetrics(!showMetrics)}
+          style={{
+            padding: "0.5rem 1rem",
+            fontSize: "0.85rem",
+            backgroundColor: showMetrics ? "#6c757d" : "#17a2b8",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+          }}
+        >
+          {showMetrics ? "Hide Metrics" : "Show Metrics"}
+        </button>
+      </div>
+
+      {/* Metrics Panel */}
+      {showMetrics && metrics && (
+        <div
+          style={{
+            padding: "1rem",
+            marginBottom: "1.5rem",
+            backgroundColor: "#1a1a2e",
+            borderRadius: "8px",
+            color: "#eee",
+            fontFamily: "monospace",
+            fontSize: "0.9rem",
+          }}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
+            <div>
+              <div style={{ color: "#888", marginBottom: "0.25rem" }}>HEAP MEMORY</div>
+              <div style={{ fontSize: "1.5rem", color: metrics.heap.percentUsed > 80 ? "#ff6b6b" : "#4ecdc4" }}>
+                {metrics.heap.usedMB} MB / {metrics.heap.maxMB} MB
+              </div>
+              <div style={{ marginTop: "0.5rem", backgroundColor: "#333", borderRadius: "4px", height: "8px", overflow: "hidden" }}>
+                <div
+                  style={{
+                    width: `${metrics.heap.percentUsed}%`,
+                    height: "100%",
+                    backgroundColor: metrics.heap.percentUsed > 80 ? "#ff6b6b" : "#4ecdc4",
+                    transition: "width 0.3s",
+                  }}
+                />
+              </div>
+              <div style={{ color: "#888", marginTop: "0.25rem" }}>{metrics.heap.percentUsed}% used</div>
+            </div>
+            <div>
+              <div style={{ color: "#888", marginBottom: "0.25rem" }}>THREADS</div>
+              <div style={{ fontSize: "1.5rem", color: "#a29bfe" }}>
+                {metrics.threads.live} <span style={{ fontSize: "0.9rem", color: "#888" }}>live</span>
+              </div>
+              <div style={{ color: "#888" }}>{metrics.threads.daemon} daemon</div>
+            </div>
+            <div>
+              <div style={{ color: "#888", marginBottom: "0.25rem" }}>UPTIME</div>
+              <div style={{ fontSize: "1.5rem", color: "#ffeaa7" }}>{formatUptime(metrics.uptime)}</div>
+            </div>
+          </div>
+          <div style={{ marginTop: "1rem", fontSize: "0.8rem", color: "#666" }}>
+            Grafana: <a href="http://localhost:3001" target="_blank" style={{ color: "#74b9ff" }}>localhost:3001</a> |
+            Prometheus: <a href="http://localhost:9090" target="_blank" style={{ color: "#74b9ff" }}>localhost:9090</a>
+          </div>
+        </div>
+      )}
 
       {/* Upload Section */}
       <div
