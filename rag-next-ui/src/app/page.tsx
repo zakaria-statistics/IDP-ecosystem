@@ -10,6 +10,18 @@ interface Metrics {
   uptime: number;
 }
 
+interface FileDetails {
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+}
+
+interface ClientLogEntry {
+  timestamp: string;
+  message: string;
+}
+
 export default function Home() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
@@ -17,21 +29,33 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [selectedFile, setSelectedFile] = useState<string>("");
+  const [selectedFileDetails, setSelectedFileDetails] = useState<FileDetails | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [showMetrics, setShowMetrics] = useState(false);
+  const [clientLogs, setClientLogs] = useState<ClientLogEntry[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch metrics periodically when panel is open
+  const appendClientLog = (message: string) => {
+    const entry = {
+      timestamp: new Date().toLocaleTimeString(),
+      message,
+    };
+    console.info(`[RAG UI] ${message}`);
+    setClientLogs((current) => [entry, ...current].slice(0, 8));
+  };
+
   useEffect(() => {
     if (!showMetrics) return;
 
     const fetchMetrics = async () => {
       try {
+        appendClientLog("Fetching backend metrics");
         const res = await fetch(`${API_URL}/api/metrics`);
         const data = await res.json();
         setMetrics(data);
       } catch (err) {
-        console.error("Failed to fetch metrics");
+        console.error("Failed to fetch metrics", err);
+        appendClientLog("Metrics fetch failed");
       }
     };
 
@@ -45,6 +69,7 @@ export default function Home() {
     if (!question.trim()) return;
 
     setLoading(true);
+    appendClientLog(`Sending query: "${question.trim().slice(0, 80)}"`);
     try {
       const res = await fetch(`${API_URL}/api/rag/query`, {
         method: "POST",
@@ -53,8 +78,11 @@ export default function Home() {
       });
       const data = await res.json();
       setAnswer(data.answer);
+      appendClientLog("Query completed successfully");
     } catch (err) {
       setAnswer("Error connecting to RAG service");
+      console.error("Query request failed", err);
+      appendClientLog("Query failed");
     } finally {
       setLoading(false);
     }
@@ -63,18 +91,33 @@ export default function Home() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     setSelectedFile(file ? file.name : "");
+    setSelectedFileDetails(
+      file
+        ? {
+            name: file.name,
+            size: file.size,
+            type: file.type || "unknown",
+            lastModified: file.lastModified,
+          }
+        : null
+    );
     setUploadStatus("");
+    if (file) {
+      appendClientLog(`Selected file ${file.name} (${formatFileSize(file.size)})`);
+    }
   };
 
   const handleUpload = async () => {
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
       setUploadStatus("Please select a file");
+      appendClientLog("Upload blocked because no file is selected");
       return;
     }
 
     setUploading(true);
     setUploadStatus("Uploading and processing...");
+    appendClientLog(`Uploading ${file.name} to ${API_URL}/api/rag/upload`);
 
     try {
       const formData = new FormData();
@@ -88,13 +131,18 @@ export default function Home() {
 
       if (data.status === "success") {
         setUploadStatus(`Ingested "${data.filename}" into ${data.chunks} chunks`);
+        appendClientLog(`Upload completed successfully with ${data.chunks} chunks`);
         setSelectedFile("");
+        setSelectedFileDetails(null);
         if (fileInputRef.current) fileInputRef.current.value = "";
       } else {
         setUploadStatus(`Error: ${data.message || "Upload failed"}`);
+        appendClientLog(`Upload failed: ${data.message || "unknown error"}`);
       }
     } catch (err) {
       setUploadStatus("Error connecting to RAG service");
+      console.error("Upload request failed", err);
+      appendClientLog("Upload request failed");
     } finally {
       setUploading(false);
     }
@@ -105,6 +153,12 @@ export default function Home() {
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
     return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
   return (
@@ -127,7 +181,6 @@ export default function Home() {
         </button>
       </div>
 
-      {/* Metrics Panel */}
       {showMetrics && metrics && (
         <div
           style={{
@@ -177,7 +230,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Upload Section */}
       <div
         style={{
           padding: "1.25rem",
@@ -242,9 +294,49 @@ export default function Home() {
             {uploadStatus}
           </p>
         )}
+        {selectedFileDetails && (
+          <div
+            style={{
+              marginTop: "0.75rem",
+              padding: "0.85rem",
+              borderRadius: "6px",
+              backgroundColor: "#ffffff",
+              border: "1px solid #dee2e6",
+              fontSize: "0.9rem",
+              color: "#333",
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: "0.4rem" }}>Selected file metadata</div>
+            <div>Name: {selectedFileDetails.name}</div>
+            <div>Size: {formatFileSize(selectedFileDetails.size)}</div>
+            <div>Type: {selectedFileDetails.type}</div>
+            <div>Last modified: {new Date(selectedFileDetails.lastModified).toLocaleString()}</div>
+          </div>
+        )}
+        <div
+          style={{
+            marginTop: "0.75rem",
+            padding: "0.85rem",
+            borderRadius: "6px",
+            backgroundColor: "#0f172a",
+            color: "#dbe4ff",
+            fontFamily: "monospace",
+            fontSize: "0.82rem",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: "0.45rem" }}>Client activity log</div>
+          {clientLogs.length === 0 ? (
+            <div style={{ color: "#94a3b8" }}>No frontend activity yet.</div>
+          ) : (
+            clientLogs.map((entry, index) => (
+              <div key={`${entry.timestamp}-${index}`} style={{ marginBottom: "0.25rem" }}>
+                [{entry.timestamp}] {entry.message}
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
-      {/* Query Section */}
       <form onSubmit={handleQuery} style={{ marginBottom: "2rem" }}>
         <input
           type="text"

@@ -1,6 +1,9 @@
 spring:
   application:
     name: rag-spring-ai
+  threads:
+    virtual:
+      enabled: true
   ai:
     vectorstore:
       chroma:
@@ -8,12 +11,19 @@ spring:
         collection-name: ${CHROMA_COLLECTION:rag-documents}
     transformers:
       embedding:
-        # sentence-transformers/all-MiniLM-L6-v2
         model-name: sentence-transformers/all-MiniLM-L6-v2
   servlet:
     multipart:
       max-file-size: 50MB
       max-request-size: 50MB
+
+logging:
+  level:
+    root: INFO
+    com.beebay.rag: DEBUG
+    org.springframework.ai: DEBUG
+    org.springframework.ai.vectorstore: DEBUG
+    ai.djl: INFO
 
 server:
   port: ${SERVER_PORT:8080}

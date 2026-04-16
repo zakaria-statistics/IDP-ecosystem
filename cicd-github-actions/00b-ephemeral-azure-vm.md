@@ -177,26 +177,24 @@ write_files:
             interval: 10s
             timeout: 5s
             retries: 5
-
-        db:
-          image: postgres:15-alpine
-          environment:
-            POSTGRES_USER: user
-            POSTGRES_PASSWORD: pass
-            POSTGRES_DB: app
-          healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U user -d app"]
-            interval: 5s
-            timeout: 3s
-            retries: 5
-
-        redis:
-          image: redis:7-alpine
-          healthcheck:
-            test: ["CMD", "redis-cli", "ping"]
-            interval: 5s
-            timeout: 3s
-            retries: 5
+          db:
+            image: postgres:15-alpine
+            environment:
+              POSTGRES_USER: user
+              POSTGRES_PASSWORD: pass
+              POSTGRES_DB: app
+            healthcheck:
+              test: ["CMD-SHELL", "pg_isready -U user -d app"]
+              interval: 5s
+              timeout: 3s
+              retries: 5
+          redis:
+            image: redis:7-alpine
+            healthcheck:
+              test: ["CMD", "redis-cli", "ping"]
+              interval: 5s
+              timeout: 3s
+              retries: 5
 ```
 
 ---
