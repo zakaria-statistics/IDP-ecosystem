@@ -1,0 +1,32 @@
+spring:
+  application:
+    name: rag-spring-ai
+  ai:
+    vectorstore:
+      chroma:
+        url: ${CHROMA_URL:http://localhost:8000}
+        collection-name: ${CHROMA_COLLECTION:rag-documents}
+    transformers:
+      embedding:
+        # sentence-transformers/all-MiniLM-L6-v2
+        model-name: sentence-transformers/all-MiniLM-L6-v2
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+app:
+  cors:
+    allowed-origins: ${CORS_ORIGINS:http://localhost:3000}
